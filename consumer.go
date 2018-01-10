@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/streadway/amqp"
+	"io/ioutil"
+	"log"
 	"time"
 )
 
@@ -78,14 +80,14 @@ func (c *consumer) start() {
 	for {
 		pair, err := c.conn.CQPair(c.key)
 		if err != nil {
-			// TODO Log Error
+			c.conn.Log.Printf("CQPair %q does not exist. Quiting consumer start: %q", c.key, err.Error())
 			break
 		}
 		o := c.options
 		c.messages, err = pair.Channel.Consume(pair.Queue.Name, o.Consumer, o.AutoAck, o.Exclusive, o.NoLocal, o.NoWait, o.Args)
 		if err != nil {
-			// TODO Log Error
-			// TODO Log Retry
+			c.conn.Log.Printf("CQPair %q failed to consume: %q", c.key, err.Error())
+			c.conn.Log.Printf("CQPair %q start retry in 1 second", c.key)
 			// TODO Implement Exponential Retry And Jitter
 			time.Sleep(1 * time.Second)
 		}
@@ -96,12 +98,14 @@ type Init func() error
 
 type connection struct {
 	Init      Init
+	Log       *log.Logger
 	options   ConnectionOptions
 	conn      *amqp.Connection
 	channel   *amqp.Channel
 	cqPairs   map[string]*CQPair
 	consumers Consumers
 	onClose   chan *amqp.Error
+	consuming bool
 }
 
 type CQPair struct {
@@ -158,6 +162,7 @@ func (c *connection) AddConsumer(consumer Consumer) {
 }
 
 func (c *connection) Consume() {
+	c.consuming = true
 	c.consumers.Consume()
 }
 
@@ -165,6 +170,7 @@ func (c *connection) Consume() {
 func NewConnection(options ConnectionOptions, init Init) *connection {
 	return &connection{
 		Init:    init,
+		Log:     log.New(ioutil.Discard, "rbt: ", 0),
 		options: options,
 		cqPairs: make(map[string]*CQPair),
 		onClose: make(chan *amqp.Error),
@@ -172,13 +178,15 @@ func NewConnection(options ConnectionOptions, init Init) *connection {
 }
 
 func (c *connection) Start() {
+	var err error
 	for {
-		if err := c.connect(); err == nil {
-			if err := c.Init; err == nil {
+		if err = c.connect(); err == nil {
+			if err = c.Init(); err == nil {
 				break
 			}
 		}
-		//TODO Log error
+		c.Log.Printf("Failed to connect: %q", err.Error())
+		c.Log.Printf("Connect retry in 5 seconds")
 		//TODO Implement Exponential Retry And Jitter
 		time.Sleep(5 * time.Second)
 	}
@@ -199,12 +207,13 @@ func (c *connection) handleClose() {
 	for {
 		<-c.onClose
 		c.onClose = make(chan *amqp.Error)
-		//TODO Log
+		c.Log.Println("Connection Interrupted. Connect retry in 5 seconds")
 		//TODO Add Jitter
 		time.Sleep(5 * time.Second)
 		c.Start()
-		//TODO Add Flag to determine if consume should be called
-		c.Consume()
+		if c.consuming {
+			c.Consume()
+		}
 	}
 }
 
