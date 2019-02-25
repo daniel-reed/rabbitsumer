@@ -35,7 +35,7 @@ type ConsumerOptions struct {
 
 type consumer struct {
 	options  ConsumerOptions
-	conn     *connection
+	conn     *Connection
 	key      string
 	consume  Consume
 	messages <-chan amqp.Delivery
@@ -43,7 +43,7 @@ type consumer struct {
 }
 
 //noinspection GoUnusedExportedFunction
-func NewConsumer(conn *connection, key string, options ConsumerOptions, consume Consume) Consumer {
+func NewConsumer(conn *Connection, key string, options ConsumerOptions, consume Consume) Consumer {
 	return &consumer{
 		conn:    conn,
 		key:     key,
@@ -100,7 +100,7 @@ func (c *consumer) start() {
 
 type Init func() error
 
-type connection struct {
+type Connection struct {
 	Init      Init
 	Log       *log.Logger
 	options   ConnectionOptions
@@ -186,7 +186,7 @@ type BindOptions struct {
 	Args     amqp.Table
 }
 
-func (c *connection) CQPair(key string) (*CQPair, error) {
+func (c *Connection) CQPair(key string) (*CQPair, error) {
 	q, ok := c.cqPairs[key]
 	if !ok {
 		return nil, errors.New("invalid key")
@@ -194,18 +194,18 @@ func (c *connection) CQPair(key string) (*CQPair, error) {
 	return q, nil
 }
 
-func (c *connection) AddConsumer(consumer Consumer) {
+func (c *Connection) AddConsumer(consumer Consumer) {
 	c.consumers = append(c.consumers, consumer)
 }
 
-func (c *connection) Consume() {
+func (c *Connection) Consume() {
 	c.consuming = true
 	c.consumers.Consume()
 }
 
 //noinspection GoUnusedExportedFunction
-func NewConnection(options ConnectionOptions, init Init) *connection {
-	return &connection{
+func NewConnection(options ConnectionOptions, init Init) *Connection {
+	return &Connection{
 		Init:    init,
 		Log:     log.New(ioutil.Discard, "rbt: ", 0),
 		options: options,
@@ -214,7 +214,7 @@ func NewConnection(options ConnectionOptions, init Init) *connection {
 	}
 }
 
-func (c *connection) Start() {
+func (c *Connection) Start() {
 	var err error
 	for {
 		if err = c.connect(); err == nil {
@@ -229,7 +229,7 @@ func (c *connection) Start() {
 	}
 }
 
-func (c *connection) connect() error {
+func (c *Connection) connect() error {
 	var err error
 	o := c.options
 	c.conn, err = amqp.Dial(fmt.Sprintf("amqp://%s:%s@%s:%s", o.User, o.Password, o.Host, o.Port))
@@ -240,7 +240,7 @@ func (c *connection) connect() error {
 	return nil
 }
 
-func (c *connection) handleClose() {
+func (c *Connection) handleClose() {
 	for {
 		<-c.onClose
 		c.onClose = make(chan *amqp.Error)
@@ -254,7 +254,7 @@ func (c *connection) handleClose() {
 	}
 }
 
-func (c *connection) CreateCQExchange(key string, options ExchangeOptions) error {
+func (c *Connection) CreateCQExchange(key string, options ExchangeOptions) error {
 	pair, err := c.CQPair(key)
 	if err != nil {
 		return err
@@ -265,7 +265,7 @@ func (c *connection) CreateCQExchange(key string, options ExchangeOptions) error
 	return nil
 }
 
-func (c *connection) CreateCQPair(key string, options QueueOptions) (*CQPair, error) {
+func (c *Connection) CreateCQPair(key string, options QueueOptions) (*CQPair, error) {
 	var err error
 	pair := &CQPair{}
 	pair.Channel, err = c.conn.Channel()
@@ -284,7 +284,7 @@ func (c *connection) CreateCQPair(key string, options QueueOptions) (*CQPair, er
 	return pair, nil
 }
 
-func (c *connection) BindCQPairQueue(key string, options BindOptions) error {
+func (c *Connection) BindCQPairQueue(key string, options BindOptions) error {
 	pair, err := c.CQPair(key)
 	if err != nil {
 		return err
