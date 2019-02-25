@@ -53,6 +53,7 @@ func NewConsumer(conn *connection, key string, options ConsumerOptions, consume 
 }
 
 func (c *consumer) Consume() {
+	c.start()
 Main:
 	for {
 		d, open := <-c.messages
@@ -90,6 +91,8 @@ func (c *consumer) start() {
 			c.conn.Log.Printf("CQPair %q start retry in 1 second", c.key)
 			// TODO Implement Exponential Retry And Jitter
 			time.Sleep(1 * time.Second)
+		} else {
+			break
 		}
 	}
 }
