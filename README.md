@@ -63,3 +63,12 @@ func main() {
 	<- forever
 }
 ```
+
+# TODO
+
+- [ ] Ensure each consumer can only be running one Consume() at a time
+- [ ] Behavior when connection is lost needs to be revisited to:
+    - Pause connection attempts from consumers
+    - Keep trying to reconnect the primary connection
+    - On Reconnect, signal consumers to connect again
+    
