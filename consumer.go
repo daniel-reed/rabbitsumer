@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/streadway/amqp"
+	"io"
 	"io/ioutil"
 	"log"
 	"time"
@@ -114,6 +115,39 @@ type connection struct {
 type CQPair struct {
 	Queue   *amqp.Queue
 	Channel *amqp.Channel
+}
+
+func (c *CQPair) NewWriter(exchange, contentType string, mandatory, immediate bool) io.Writer {
+	return &CQPairWriter{
+		CQPair:      c,
+		Exchange:    exchange,
+		Mandatory:   mandatory,
+		Immediate:   immediate,
+		ContentType: contentType,
+	}
+}
+
+type CQPairWriter struct {
+	CQPair      *CQPair
+	Exchange    string
+	Mandatory   bool
+	Immediate   bool
+	ContentType string
+}
+
+// Each call to Write is an individual AMQP message
+func (c *CQPairWriter) Write(p []byte) (n int, err error) {
+	err = c.CQPair.Channel.Publish(
+		c.Exchange,
+		c.CQPair.Queue.Name,
+		c.Mandatory,
+		c.Immediate,
+		amqp.Publishing{ContentType: c.ContentType, Body: p},
+	)
+	if err != nil {
+		n = len(p)
+	}
+	return
 }
 
 type ConnectionOptions struct {
@@ -231,23 +265,23 @@ func (c *connection) CreateCQExchange(key string, options ExchangeOptions) error
 	return nil
 }
 
-func (c *connection) CreateCQPair(key string, options QueueOptions) error {
+func (c *connection) CreateCQPair(key string, options QueueOptions) (*CQPair, error) {
 	var err error
 	pair := &CQPair{}
 	pair.Channel, err = c.conn.Channel()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err = pair.Channel.Qos(options.PrefetchCount, options.PrefetchSize, options.Global); err != nil {
-		return err
+		return nil, err
 	}
 	q, err := pair.Channel.QueueDeclare(options.Name, options.Durable, options.AutoDelete, options.Exclusive, options.NoWait, options.Args)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	pair.Queue = &q
 	c.cqPairs[key] = pair
-	return nil
+	return pair, nil
 }
 
 func (c *connection) BindCQPairQueue(key string, options BindOptions) error {

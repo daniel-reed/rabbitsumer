@@ -33,20 +33,15 @@ func main() {
 		Name:          "hello",
 		PrefetchCount: 2,
 	}
-	// Create a Connection/Queue Pair at "HelloCQPair"
-	if err := rabbitconn.CreateCQPair("HelloCQPair", helloQueueOptions); err != nil {
-		log.Fatal(err)
-	}
-	// Get the pair we just created
-	helloQueue, err := rabbitconn.CQPair("HelloCQPair")
-	if err != nil {
-		log.Fatal(err)
-	}
+	helloQueue, err := rabbitconn.CreateCQPair("HelloCQPair", helloQueueOptions)
+    if err != nil {
+        log.Fatal(err)
+    }
 	// Publish to the queue
-	err = helloQueue.Channel.Publish("", helloQueue.Queue.Name, false, false, amqp.Publishing{ContentType: "text/plain", Body: []byte("Hello World!")})
-	if err != nil {
-		log.Fatal(err)
-	}
+	helloWriter := helloQueue.NewWriter("", "text/plain", false, false)
+    if _, err := helloWriter.Write([]byte("Hello World!")); err != nil {
+        log.Fatal(err)
+    }
 
     // Create the Consumer function
 	helloConsumerFunc := func (d *amqp.Delivery) {
